@@ -1,0 +1,8 @@
+Flask==2.3.3
+# Flask-SQLAlchemy==3.0.5  # 已移除，改用JSON文件存储
+Flask-CORS==4.0.0
+Werkzeug==2.3.7
+requests==2.31.0
+# 添加S3兼容性所需的依赖
+boto3==1.34.0  # AWS SDK for Python，用于测试S3兼容性
+botocore==1.34.0  # boto3的底层库 

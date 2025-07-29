@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyIO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        danger: '#EF4444',
+                        warning: '#F59E0B',
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .transition-height {
+                transition: max-height 0.3s ease;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .card-hover {
+                @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+            }
+        }
+    </style>
+</head>
+<body class="font-inter bg-gray-50 text-gray-800 min-h-screen flex flex-col">
+    <!-- 顶部导航栏 -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-cloud text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">PyIO</h1>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <!-- 磁盘使用统计 -->
+                <div class="hidden md:flex items-center space-x-3 text-sm">
+                    <div class="flex items-center space-x-2 text-gray-600">
+                        <i class="fa fa-hdd-o text-purple-500"></i>
+                        <span>已用 <span id="header-used-size">0 GB</span></span>
+                    </div>
+                    <div class="w-16 bg-gray-200 rounded-full h-1.5">
+                        <div class="bg-purple-500 h-1.5 rounded-full header-storage-progress" style="width: 0%"></div>
+                    </div>
+                    <span class="text-gray-500">总 <span id="header-total-size">0 GB</span></span>
+                </div>
+                
+                <div class="hidden md:flex items-center space-x-1 text-sm text-gray-600">
+                    <i class="fa fa-server"></i>
+                    <span id="server-status">离线</span>
+                </div>
+                <button id="refresh-btn" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                    <i class="fa fa-refresh"></i>
+                </button>
+                <div class="relative">
+                    <button id="user-menu-btn" class="flex items-center space-x-2 p-1 rounded-full hover:bg-gray-100 transition-colors">
+                        <i class="fa fa-user-circle-o text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow container mx-auto px-4 py-6">
+
+        <div class="flex flex-col md:flex-row gap-6">
+            <!-- 左侧边栏 -->
+            <div class="w-full md:w-80 shrink-0">
+                <div class="bg-white rounded-xl shadow p-6 sticky top-">
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-3">存储桶管理</h3>
+                        <button id="create-bucket-btn" class="w-full bg-primary hover:bg-primary/90 text-white py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm">
+                            <i class="fa fa-plus"></i>
+                            <span>创建存储桶</span>
+                        </button>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-700 mb-3 flex items-center justify-between">
+                            <span>我的存储桶</span>
+                            <span id="buckets-loading" class="text-xs text-gray-500 hidden">加载中...</span>
+                        </h3>
+                        <div id="bucket-list" class="space-y-1 max-h-[600px] overflow-y-auto scrollbar-hide">
+                            <div class="text-center text-gray-500 py-6 text-sm">暂无存储桶</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧内容区 -->
+            <div class="flex-grow">
+                <!-- 面包屑导航 -->
+                <div class="bg-white rounded-xl shadow p-4 mb-6">
+                    <div class="flex items-center text-sm">
+                        <a href="#" class="text-primary hover:underline" onclick="goHome()">首页</a>
+                        <i class="fa fa-angle-right mx-2 text-gray-400"></i>
+                        <span id="breadcrumb-bucket" class="text-gray-500">未选择存储桶</span>
+                    </div>
+                </div>
+                
+                <!-- 存储桶操作栏 -->
+                <div id="bucket-actions" class="bg-white rounded-xl shadow p-4 mb-6 hidden">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div class="flex items-center gap-3">
+                            <h2 id="current-bucket-name" class="text-xl font-bold">存储桶名称</h2>
+                            <span id="current-bucket-object-count" class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">0 个对象</span>
+                        </div>
+                        
+                        <div class="flex items-center gap-3">
+                            <div class="relative">
+                                <input type="text" id="object-search" placeholder="搜索对象..." class="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
+                                <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            </div>
+                            
+                            <button id="create-folder-btn" class="bg-warning hover:bg-warning/90 text-white py-2 px-4 rounded-lg transition-colors flex items-center">
+                                <i class="fa fa-folder-plus mr-2"></i>
+                                <span>创建文件夹</span>
+                            </button>
+                            
+                            <button id="upload-object-btn" class="bg-secondary hover:bg-secondary/90 text-white py-2 px-4 rounded-lg transition-colors flex items-center">
+                                <i class="fa fa-upload mr-2"></i>
+                                <span>上传文件</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 对象列表 -->
+                <div id="objects-view" class="bg-white rounded-xl shadow p-4 mb-6 hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">大小</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">修改时间</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="object-list" class="bg-white divide-y divide-gray-200">
+                                <tr class="text-center">
+                                    <td colspan="4" class="px-6 py-12 text-gray-500">
+                                        <div class="flex flex-col items-center">
+                                            <i class="fa fa-folder-open-o text-4xl mb-3 text-gray-300"></i>
+                                            <p>此存储桶为空</p>
+                                            <p class="text-xs mt-2">上传文件到这个存储桶</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 初始视图 -->
+                <div id="initial-view" class="bg-white rounded-xl shadow p-8 text-center">
+                    <div class="max-w-md mx-auto">
+                        <div class="mb-6">
+                            <i class="fa fa-cloud text-6xl text-primary/30"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-3">欢迎使用PyIO</h2>
+                        <p class="text-gray-600 mb-6">对象存储服务(OSS)为您提供安全、稳定、高效的云存储服务。</p>
+                        <button id="initial-create-bucket-btn" class="bg-primary hover:bg-primary/90 text-white py-3 px-6 rounded-lg transition-colors text-lg font-medium">
+                            创建您的第一个存储桶
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <!-- <footer class="bg-white border-t border-gray-200 py-6">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p class="text-gray-500 text-sm">© 2025 对象存储管理系统. 保留所有权利.</p>
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-gray-500 hover:text-primary transition-colors">
+                        <i class="fa fa-question-circle"></i> 帮助中心
+                    </a>
+                    <a href="#" class="text-gray-500 hover:text-primary transition-colors">
+                        <i class="fa fa-file-text-o"></i> 文档
+                    </a>
+                    <a href="#" class="text-gray-500 hover:text-primary transition-colors">
+                        <i class="fa fa-envelope-o"></i> 联系我们
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer> -->
+
+    <!-- 创建存储桶模态框 -->
+    <div id="create-bucket-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 transform transition-all duration-300 scale-95 opacity-0" id="modal-content">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-gray-800">创建存储桶</h3>
+                    <button id="close-create-bucket-modal" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+                <form id="create-bucket-form">
+                    <div class="mb-4">
+                        <label for="bucket-name-input" class="block text-sm font-medium text-gray-700 mb-1">存储桶名称</label>
+                        <input type="text" id="bucket-name-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" placeholder="请输入存储桶名称" required>
+                        <p class="text-xs text-gray-500 mt-1">存储桶名称必须全局唯一，只能包含小写字母、数字和短横线(-)</p>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">访问权限</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <label class="flex items-center justify-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                <input type="radio" name="access-control" value="private" class="mr-2" checked>
+                                <span>私有</span>
+                            </label>
+                            <label class="flex items-center justify-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                <input type="radio" name="access-control" value="public-read" class="mr-2">
+                                <span>公共读</span>
+                            </label>
+                            <label class="flex items-center justify-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                <input type="radio" name="access-control" value="public-read-write" class="mr-2">
+                                <span>公共读写</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" id="cancel-create-bucket" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">取消</button>
+                        <button type="submit" class="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors">创建</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建文件夹模态框 -->
+    <div id="create-folder-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 transform transition-all duration-300 scale-95 opacity-0" id="create-folder-modal-content">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800">创建文件夹</h3>
+                    <button id="close-create-folder-modal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <form id="create-folder-form">
+                    <div class="mb-4">
+                        <label for="folder-name-input" class="block text-sm font-medium text-gray-700 mb-2">文件夹名称</label>
+                        <input type="text" id="folder-name-input" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" placeholder="输入文件夹名称">
+                    </div>
+                    
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" id="cancel-create-folder" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">取消</button>
+                        <button type="submit" class="px-4 py-2 bg-warning hover:bg-warning/90 text-white rounded-lg transition-colors">创建</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑存储桶模态框 -->
+    <div id="edit-bucket-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 transform transition-all duration-300 scale-95 opacity-0" id="edit-bucket-modal-content">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800">编辑存储桶权限</h3>
+                    <button id="close-edit-bucket-modal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <form id="edit-bucket-form">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">存储桶名称</label>
+                        <input type="text" id="edit-bucket-name" class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" readonly>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">访问权限</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="radio" name="edit-access-control" value="private" class="mr-2">
+                                <span class="text-sm">私有 - 仅授权用户可访问</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="edit-access-control" value="public-read" class="mr-2">
+                                <span class="text-sm">公共读 - 所有人可读取，仅授权用户可写入</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="edit-access-control" value="public-read-write" class="mr-2">
+                                <span class="text-sm">公共读写 - 所有人可读写</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" id="cancel-edit-bucket" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">取消</button>
+                        <button type="submit" class="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors">保存</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传文件模态框 -->
+    <div id="upload-object-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 transform transition-all duration-300 scale-95 opacity-0" id="upload-modal-content">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-gray-800">上传文件到 <span id="upload-bucket-name">存储桶</span></h3>
+                    <button id="close-upload-modal" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+                <form id="upload-object-form">
+                    <div class="mb-6">
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary transition-colors cursor-pointer" id="file-dropzone">
+                            <input type="file" id="file-input" class="hidden" multiple>
+                            <i class="fa fa-cloud-upload text-4xl text-gray-300 mb-3"></i>
+                            <p class="mb-2">点击或拖拽文件到此处上传</p>
+                            <p class="text-xs text-gray-500">支持多文件上传，无文件大小限制</p>
+                        </div>
+                        
+                        <!-- 上传进度条 -->
+                        <div id="upload-progress-container" class="mt-4 hidden">
+                            <div class="bg-gray-200 rounded-full h-2 mb-2">
+                                <div id="upload-progress-bar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                            <div class="flex justify-between text-sm text-gray-600">
+                                <span id="upload-progress-text">0%</span>
+                                <span id="upload-speed">0 KB/s</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">
+                                <span id="upload-current-file">准备上传...</span>
+                            </div>
+                        </div>
+                        <div id="upload-files-list" class="mt-4 space-y-2 hidden">
+                            <h4 class="text-sm font-medium text-gray-700 mb-2">待上传文件</h4>
+                            <div id="file-items-container"></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" id="cancel-upload" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">取消</button>
+                        <button type="submit" class="px-4 py-2 bg-secondary hover:bg-secondary/90 text-white rounded-lg transition-colors">开始上传</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作结果提示框 -->
+    <div id="toast" class="fixed bottom-6 right-6 max-w-xs w-full bg-white rounded-lg shadow-lg p-4 transform translate-y-16 opacity-0 transition-all duration-300 z-50 flex items-start">
+        <div id="toast-icon-container" class="mr-3 p-2 rounded-full bg-green-100">
+            <i id="toast-icon" class="fa fa-check text-green-500"></i>
+        </div>
+        <div class="flex-grow">
+            <h4 id="toast-title" class="font-medium text-gray-800">操作成功</h4>
+            <p id="toast-message" class="text-sm text-gray-600 mt-1">您的操作已成功完成。</p>
+        </div>
+        <button id="close-toast" class="text-gray-400 hover:text-gray-600 ml-2">
+            <i class="fa fa-times"></i>
+        </button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 服务器配置 - 自动检测当前域名和端口
+            const API_BASE_URL = window.location.origin;
+            
+            // 当前选中的存储桶和路径
+            let currentBucket = null;
+            let currentPath = '';
+            
+            // 状态元素
+            const serverStatusEl = document.getElementById('server-status');
+            const bucketCountEl = document.getElementById('bucket-count');
+            const objectCountEl = document.getElementById('object-count');
+            const storageUsageEl = document.getElementById('storage-usage');
+            const storageTotalEl = document.getElementById('storage-total');
+            const storagePercentageEl = document.getElementById('storage-percentage');
+            const bucketCountDiffEl = document.getElementById('bucket-count-diff');
+            const objectCountDiffEl = document.getElementById('object-count-diff');
+            
+            // 视图元素
+            const initialViewEl = document.getElementById('initial-view');
+            const bucketActionsEl = document.getElementById('bucket-actions');
+            const objectsViewEl = document.getElementById('objects-view');
+            const currentBucketNameEl = document.getElementById('current-bucket-name');
+            const currentBucketObjectCountEl = document.getElementById('current-bucket-object-count');
+            const breadcrumbBucketEl = document.getElementById('breadcrumb-bucket');
+            
+            // 桶列表和对象列表容器
+            const bucketListEl = document.getElementById('bucket-list');
+            const objectListEl = document.getElementById('object-list');
+            
+            // 模态框元素
+            const createBucketModalEl = document.getElementById('create-bucket-modal');
+            const modalContentEl = document.getElementById('modal-content');
+            const createFolderModalEl = document.getElementById('create-folder-modal');
+            const createFolderModalContentEl = document.getElementById('create-folder-modal-content');
+            const editBucketModalEl = document.getElementById('edit-bucket-modal');
+            const editBucketModalContentEl = document.getElementById('edit-bucket-modal-content');
+            const uploadObjectModalEl = document.getElementById('upload-object-modal');
+            const uploadModalContentEl = document.getElementById('upload-modal-content');
+            
+            // 文件上传相关元素
+            const fileDropzoneEl = document.getElementById('file-dropzone');
+            const fileInputEl = document.getElementById('file-input');
+            const uploadFilesListEl = document.getElementById('upload-files-list');
+            const fileItemsContainerEl = document.getElementById('file-items-container');
+            
+            // 提示框元素
+            const toastEl = document.getElementById('toast');
+            const toastIconEl = document.getElementById('toast-icon');
+            const toastIconContainerEl = document.getElementById('toast-icon-container');
+            const toastTitleEl = document.getElementById('toast-title');
+            const toastMessageEl = document.getElementById('toast-message');
+            
+            // 加载状态元素
+            const bucketsLoadingEl = document.getElementById('buckets-loading');
+            
+            // 初始化
+            checkServerStatus();
+            fetchBuckets();
+            updateDiskUsage();
+            
+            // 事件监听器
+            document.getElementById('refresh-btn').addEventListener('click', function() {
+                fetchBuckets();
+                updateDiskUsage();
+                if (currentBucket) {
+                    fetchObjects(currentBucket);
+                }
+                showToast('刷新成功', '数据已更新', 'success');
+            });
+
+            // 为创建存储桶按钮添加事件监听器
+            const createBucketBtn = document.getElementById('create-bucket-btn');
+            if (createBucketBtn) {
+                createBucketBtn.addEventListener('click', function() {
+                    console.log('创建存储桶按钮被点击');
+                    openCreateBucketModal();
+                });
+            } else {
+                console.error('未找到创建存储桶按钮');
+            }
+
+            // 为初始创建存储桶按钮添加事件监听器
+            const initialCreateBucketBtn = document.getElementById('initial-create-bucket-btn');
+            if (initialCreateBucketBtn) {
+                initialCreateBucketBtn.addEventListener('click', function() {
+                    console.log('初始创建存储桶按钮被点击');
+                    openCreateBucketModal();
+                });
+            } else {
+                console.error('未找到初始创建存储桶按钮');
+            }
+
+            document.getElementById('close-create-bucket-modal').addEventListener('click', closeCreateBucketModal);
+            document.getElementById('cancel-create-bucket').addEventListener('click', closeCreateBucketModal);
+
+            document.getElementById('create-bucket-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                console.log('创建存储桶表单被提交');
+                createBucket();
+            });
+            
+            document.getElementById('create-folder-btn').addEventListener('click', openCreateFolderModal);
+            document.getElementById('close-create-folder-modal').addEventListener('click', closeCreateFolderModal);
+            document.getElementById('cancel-create-folder').addEventListener('click', closeCreateFolderModal);
+            
+            document.getElementById('close-edit-bucket-modal').addEventListener('click', closeEditBucketModal);
+            document.getElementById('cancel-edit-bucket').addEventListener('click', closeEditBucketModal);
+            
+            document.getElementById('upload-object-btn').addEventListener('click', openUploadModal);
+            document.getElementById('close-upload-modal').addEventListener('click', closeUploadModal);
+            document.getElementById('cancel-upload').addEventListener('click', closeUploadModal);
+            
+            document.getElementById('file-dropzone').addEventListener('click', function() {
+                fileInputEl.click();
+            });
+            
+            fileInputEl.addEventListener('change', handleFileSelect);
+            
+            fileDropzoneEl.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                fileDropzoneEl.classList.add('border-primary');
+                fileDropzoneEl.classList.add('bg-blue-50');
+            });
+            
+            fileDropzoneEl.addEventListener('dragleave', function() {
+                fileDropzoneEl.classList.remove('border-primary');
+                fileDropzoneEl.classList.remove('bg-blue-50');
+            });
+            
+            fileDropzoneEl.addEventListener('drop', function(e) {
+                e.preventDefault();
+                fileDropzoneEl.classList.remove('border-primary');
+                fileDropzoneEl.classList.remove('bg-blue-50');
+                
+                if (e.dataTransfer.files.length > 0) {
+                    handleFiles(e.dataTransfer.files);
+                }
+            });
+            
+            document.getElementById('create-folder-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                createFolder();
+            });
+            
+            document.getElementById('edit-bucket-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                updateBucketAccessControl();
+            });
+            
+            document.getElementById('upload-object-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                uploadFiles();
+            });
+            
+            document.getElementById('close-toast').addEventListener('click', function() {
+                hideToast();
+            });
+            
+            // 检查服务器状态
+            function checkServerStatus() {
+                fetch(`${API_BASE_URL}/status`)
+                    .then(response => {
+                        if (response.ok) {
+                            serverStatusEl.textContent = '在线';
+                            serverStatusEl.classList.remove('text-red-500');
+                            serverStatusEl.classList.add('text-green-500');
+                        } else {
+                            throw new Error('服务器返回错误状态');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('检查服务器状态失败:', error);
+                        serverStatusEl.textContent = '离线';
+                        serverStatusEl.classList.remove('text-green-500');
+                        serverStatusEl.classList.add('text-red-500');
+                        showToast('连接失败', '无法连接到服务器，请检查服务器状态', 'error');
+                    });
+            }
+            
+            // 获取存储桶列表
+            function fetchBuckets() {
+                bucketsLoadingEl.classList.remove('hidden');
+                fetch(`${API_BASE_URL}/buckets`)
+                    .then(response => response.json())
+                    .then(data => {
+                        bucketListEl.innerHTML = '';
+                        
+                        if (data.buckets && data.buckets.length > 0) {
+                            data.buckets.forEach(bucket => {
+                                const bucketEl = document.createElement('div');
+                                bucketEl.className = 'flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors border border-gray-100';
+                                const accessControlText = {
+                                    'private': '私有',
+                                    'public-read': '公共读',
+                                    'public-read-write': '公共读写'
+                                };
+                                
+                                bucketEl.innerHTML = `
+                                    <div class="flex items-center">
+                                        <i class="fa fa-folder text-primary mr-2 text-sm"></i>
+                                        <div>
+                                            <div class="font-medium text-sm">${bucket.name}</div>
+                                            <div class="text-xs text-gray-500">${accessControlText[bucket.access_control] || '私有'}</div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <button class="edit-bucket-btn text-gray-400 hover:text-primary mr-1" data-bucket="${bucket.name}" data-access="${bucket.access_control}">
+                                            <i class="fa fa-edit text-xs"></i>
+                                        </button>
+                                        <button class="delete-bucket-btn text-gray-400 hover:text-danger" data-bucket="${bucket.name}">
+                                            <i class="fa fa-trash-o text-xs"></i>
+                                        </button>
+                                    </div>
+                                `;
+                                
+                                bucketEl.addEventListener('click', function() {
+                                    selectBucket(bucket.name);
+                                });
+                                
+                                bucketListEl.appendChild(bucketEl);
+                            });
+                            
+                            // 添加编辑桶事件监听器
+                            document.querySelectorAll('.edit-bucket-btn').forEach(btn => {
+                                btn.addEventListener('click', function(e) {
+                                    e.stopPropagation();
+                                    const bucketName = this.getAttribute('data-bucket');
+                                    const accessControl = this.getAttribute('data-access');
+                                    openEditBucketModal(bucketName, accessControl);
+                                });
+                            });
+                            
+                            // 添加删除桶事件监听器
+                            document.querySelectorAll('.delete-bucket-btn').forEach(btn => {
+                                btn.addEventListener('click', function(e) {
+                                    e.stopPropagation();
+                                    const bucketName = this.getAttribute('data-bucket');
+                                    deleteBucket(bucketName);
+                                });
+                            });
+                            
+                            // 如果有存储桶，隐藏初始视图
+                            initialViewEl.classList.add('hidden');
+                        } else {
+                            bucketListEl.innerHTML = '<div class="text-center text-gray-500 py-4">暂无存储桶</div>';
+                            // 如果没有存储桶，显示初始视图
+                            initialViewEl.classList.remove('hidden');
+                        }
+                        
+                        bucketsLoadingEl.classList.add('hidden');
+                    })
+                    .catch(error => {
+                        console.error('获取存储桶列表失败:', error);
+                        bucketsLoadingEl.classList.add('hidden');
+                        showToast('操作失败', '获取存储桶列表失败', 'error');
+                    });
+            }
+            
+            // 选择存储桶
+            function selectBucket(bucketName) {
+                currentBucket = bucketName;
+                currentPath = '';
+                
+                // 先获取存储桶信息以检查权限
+                fetch(`${API_BASE_URL}/buckets`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const bucket = data.buckets.find(b => b.name === bucketName);
+                        if (bucket && bucket.access_control === 'private') {
+                            // 私有桶需要认证
+                            authenticateForBucket(bucketName).then(() => {
+                                loadBucket(bucketName);
+                            }).catch(() => {
+                                showToast('访问失败', '无法访问私有存储桶', 'error');
+                            });
+                        } else {
+                            // 公共桶直接加载
+                            loadBucket(bucketName);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取存储桶信息失败:', error);
+                        showToast('操作失败', '无法获取存储桶信息', 'error');
+                    });
+            }
+            
+            // 加载存储桶
+            function loadBucket(bucketName, path = '') {
+                currentBucket = bucketName;
+                currentPath = path;
+                currentBucketNameEl.textContent = bucketName;
+                updateBreadcrumb();
+                
+                // 切换视图
+                initialViewEl.classList.add('hidden');
+                bucketActionsEl.classList.remove('hidden');
+                objectsViewEl.classList.remove('hidden');
+                
+                // 获取对象列表
+                fetchObjects(bucketName, path);
+            }
+            
+            // 导航到文件夹
+            function navigateToFolder(folderName) {
+                if (!currentBucket) return;
+                
+                // 移除文件夹名称末尾的斜杠
+                const cleanFolderName = folderName.replace(/\/$/, '');
+                
+                // 对于common_prefixes，prefix是相对于当前路径的完整路径
+                // 我们需要将其设置为新的当前路径
+                currentPath = cleanFolderName;
+                
+                // 更新面包屑
+                updateBreadcrumb();
+                
+                // 加载文件夹内容 - 注意：API需要前缀以斜杠结尾
+                loadBucket(currentBucket, currentPath + '/');
+            }
+            
+            // 更新面包屑导航
+            function updateBreadcrumb() {
+                if (currentPath === '') {
+                    breadcrumbBucketEl.textContent = currentBucket;
+                } else {
+                    const pathParts = currentPath.split('/');
+                    let breadcrumb = currentBucket;
+                    
+                    for (let i = 0; i < pathParts.length; i++) {
+                        if (pathParts[i]) {
+                            breadcrumb += ` / ${pathParts[i]}`;
+                        }
+                    }
+                    
+                    breadcrumbBucketEl.textContent = breadcrumb;
+                }
+            }
+            
+            // 返回首页
+            function goHome() {
+                if (currentBucket) {
+                    currentPath = '';
+                    loadBucket(currentBucket, '');
+                }
+            }
+            
+            // 打开编辑存储桶模态框
+            function openEditBucketModal(bucketName, accessControl) {
+                document.getElementById('edit-bucket-name').value = bucketName;
+                document.querySelector(`input[name="edit-access-control"][value="${accessControl}"]`).checked = true;
+                
+                editBucketModalEl.classList.remove('hidden');
+                setTimeout(() => {
+                    editBucketModalContentEl.classList.remove('scale-95', 'opacity-0');
+                    editBucketModalContentEl.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            }
+            
+            // 关闭编辑存储桶模态框
+            function closeEditBucketModal() {
+                editBucketModalContentEl.classList.remove('scale-100', 'opacity-100');
+                editBucketModalContentEl.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => {
+                    editBucketModalEl.classList.add('hidden');
+                }, 300);
+            }
+            
+            // 更新存储桶访问控制
+            function updateBucketAccessControl() {
+                const bucketName = document.getElementById('edit-bucket-name').value;
+                const accessControl = document.querySelector('input[name="edit-access-control"]:checked').value;
+                
+                fetch(`${API_BASE_URL}/buckets/${bucketName}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        access_control: accessControl
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showToast('更新失败', data.error, 'error');
+                    } else {
+                        showToast('更新成功', `存储桶 "${bucketName}" 权限已更新`, 'success');
+                        closeEditBucketModal();
+                        fetchBuckets(); // 刷新桶列表
+                    }
+                })
+                .catch(error => {
+                    console.error('更新存储桶权限失败:', error);
+                    showToast('更新失败', '无法连接到服务器', 'error');
+                });
+            }
+            
+            // 为私有桶进行认证（简化版本，直接允许访问）
+            function authenticateForBucket(bucketName) {
+                return Promise.resolve({ message: 'Authentication successful' });
+            }
+            
+            // 获取对象列表
+            function fetchObjects(bucketName, path = '') {
+                objectsLoading(true);
+                let url = `${API_BASE_URL}/buckets/${bucketName}/objects`;
+                if (path) {
+                    url += `?prefix=${encodeURIComponent(path)}`;
+                }
+                
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        objectListEl.innerHTML = '';
+                        
+                        // 处理文件夹（common_prefixes）
+                        if (data.common_prefixes && data.common_prefixes.length > 0) {
+                            data.common_prefixes.forEach(prefix => {
+                                const folderEl = document.createElement('tr');
+                                folderEl.className = 'hover:bg-gray-50 transition-colors';
+                                folderEl.style.cursor = 'pointer';
+                                
+                                folderEl.addEventListener('click', function() {
+                                    // 对于common_prefixes，prefix是完整路径，我们需要导航到这个路径
+                                    navigateToFolder(prefix);
+                                });
+                                
+                                folderEl.innerHTML = `
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-md flex items-center justify-center">
+                                                <i class="fa fa-folder text-gray-400"></i>
+                                            </div>
+                                            <div class="ml-4">
+                                                <div class="text-sm font-medium text-gray-900">${getDisplayName(prefix)}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-gray-500">-</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        -
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <div class="flex space-x-2">
+                                            <button class="delete-object-btn text-danger hover:text-danger/80 transition-colors" data-bucket="${bucketName}" data-object="${prefix}" title="删除">
+                                                <i class="fa fa-trash-o"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                `;
+                                
+                                objectListEl.appendChild(folderEl);
+                            });
+                        }
+                        
+                        // 处理文件（objects）
+                        if (data.objects && data.objects.length > 0) {
+                            data.objects.forEach(object => {
+                                const isFolder = object.content_type === 'application/x-directory' || object.name.endsWith('/');
+                                const objectEl = document.createElement('tr');
+                                objectEl.className = 'hover:bg-gray-50 transition-colors';
+                                
+                                // 为文件夹添加点击事件
+                                if (isFolder) {
+                                    objectEl.style.cursor = 'pointer';
+                                    objectEl.addEventListener('click', function() {
+                                        navigateToFolder(object.name);
+                                    });
+                                }
+                                
+                                objectEl.innerHTML = `
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-md flex items-center justify-center">
+                                                <i class="fa ${isFolder ? 'fa-folder' : 'fa-file-o'} text-gray-400"></i>
+                                            </div>
+                                            <div class="ml-4">
+                                                <div class="text-sm font-medium text-gray-900">${getDisplayName(object.name)}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-gray-500">${isFolder ? '-' : formatFileSize(object.size)}</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        ${formatDate(object.last_modified)}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <div class="flex space-x-2">
+                                            ${!isFolder ? `
+                                                <button class="download-object-btn text-primary hover:text-primary/80 transition-colors" data-bucket="${bucketName}" data-object="${object.name}" title="下载">
+                                                    <i class="fa fa-download"></i>
+                                                </button>
+                                                <button class="copy-url-btn text-secondary hover:text-secondary/80 transition-colors" data-bucket="${bucketName}" data-object="${object.name}" title="复制链接">
+                                                    <i class="fa fa-link"></i>
+                                                </button>
+                                                <button class="presigned-url-btn text-warning hover:text-warning/80 transition-colors" data-bucket="${bucketName}" data-object="${object.name}" title="复制对象链接">
+                                                    <i class="fa fa-link"></i>
+                                                </button>
+                                            ` : ''}
+                                            <button class="delete-object-btn text-danger hover:text-danger/80 transition-colors" data-bucket="${bucketName}" data-object="${object.name}" title="删除">
+                                                <i class="fa fa-trash-o"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                `;
+                                
+                                objectListEl.appendChild(objectEl);
+                            });
+                            
+                            // 更新对象计数
+                            const totalItems = (data.objects ? data.objects.length : 0) + (data.common_prefixes ? data.common_prefixes.length : 0);
+                            currentBucketObjectCountEl.textContent = `${totalItems} 个对象`;
+                            
+                            // 添加对象操作事件监听器
+                            document.querySelectorAll('.download-object-btn').forEach(btn => {
+                                btn.addEventListener('click', function() {
+                                    const bucketName = this.getAttribute('data-bucket');
+                                    const objectName = this.getAttribute('data-object');
+                                    downloadObject(bucketName, objectName);
+                                });
+                            });
+                            
+                            document.querySelectorAll('.copy-url-btn').forEach(btn => {
+                                btn.addEventListener('click', function() {
+                                    const bucketName = this.getAttribute('data-bucket');
+                                    const objectName = this.getAttribute('data-object');
+                                    copyObjectUrl(bucketName, objectName);
+                                });
+                            });
+                            
+                            document.querySelectorAll('.presigned-url-btn').forEach(btn => {
+                                btn.addEventListener('click', function() {
+                                    const bucketName = this.getAttribute('data-bucket');
+                                    const objectName = this.getAttribute('data-object');
+                                    generatePresignedUrl(bucketName, objectName);
+                                });
+                            });
+                        }
+                        
+                        // 添加删除按钮事件监听器（对所有对象，包括文件夹）
+                        document.querySelectorAll('.delete-object-btn').forEach(btn => {
+                            btn.addEventListener('click', function() {
+                                const bucketName = this.getAttribute('data-bucket');
+                                const objectName = this.getAttribute('data-object');
+                                deleteObject(bucketName, objectName);
+                            });
+                        });
+                        
+                        // 检查是否既没有文件也没有文件夹
+                        if ((!data.objects || data.objects.length === 0) && (!data.common_prefixes || data.common_prefixes.length === 0)) {
+                            objectListEl.innerHTML = `
+                                <tr class="text-center">
+                                    <td colspan="4" class="px-6 py-12 text-gray-500">
+                                        <div class="flex flex-col items-center">
+                                            <i class="fa fa-folder-open-o text-4xl mb-3 text-gray-300"></i>
+                                            <p>此存储桶为空</p>
+                                            <p class="text-xs mt-2">上传文件到这个存储桶</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                            currentBucketObjectCountEl.textContent = '0 个对象';
+                        }
+                        
+                        objectsLoading(false);
+                    })
+                    .catch(error => {
+                        console.error('获取对象列表失败:', error);
+                        objectsLoading(false);
+                        showToast('操作失败', '获取对象列表失败', 'error');
+                    });
+            }
+            
+            // 更新磁盘容量信息
+            function updateDiskUsage() {
+                fetch(`${API_BASE_URL}/disk-usage`)
+                    .then(response => response.json())
+                    .then(data => {
+                        // 更新磁盘使用情况
+                        const totalFormatted = data.total_formatted || '0 GB';
+                        const usedFormatted = data.used_formatted || '0 GB';
+                        const freeFormatted = data.free_formatted || '0 GB';
+                        
+                        // 更新header显示
+                        if (document.getElementById('header-total-size')) {
+                            document.getElementById('header-total-size').textContent = totalFormatted;
+                        }
+                        if (document.getElementById('header-used-size')) {
+                            document.getElementById('header-used-size').textContent = usedFormatted;
+                        }
+                        
+                        // 更新主内容区显示（如果存在）
+                        if (document.getElementById('total-size')) {
+                            document.getElementById('total-size').textContent = totalFormatted;
+                        }
+                        if (document.getElementById('used-size')) {
+                            document.getElementById('used-size').textContent = usedFormatted;
+                        }
+                        if (document.getElementById('free-size')) {
+                            document.getElementById('free-size').textContent = freeFormatted;
+                        }
+                        
+                        // 计算使用百分比
+                        const usedPercentage = data.total > 0 ? Math.round((data.used / data.total) * 100) : 0;
+                        if (document.getElementById('storage-percentage')) {
+                            document.getElementById('storage-percentage').textContent = `${usedPercentage}%`;
+                        }
+                        
+                        // 更新header进度条
+                        const headerProgressBars = document.querySelectorAll('.header-storage-progress');
+                        headerProgressBars.forEach(bar => {
+                            bar.style.width = `${usedPercentage}%`;
+                        });
+                        
+                        // 更新主内容区进度条（如果存在）
+                        const progressBars = document.querySelectorAll('.storage-progress-bar');
+                        progressBars.forEach(bar => {
+                            bar.style.width = `${usedPercentage}%`;
+                        });
+                    })
+                    .catch(error => {
+                        console.error('获取磁盘信息失败:', error);
+                        // 使用默认值
+                        if (document.getElementById('header-total-size')) {
+                            document.getElementById('header-total-size').textContent = '0 GB';
+                        }
+                        if (document.getElementById('header-used-size')) {
+                            document.getElementById('header-used-size').textContent = '0 GB';
+                        }
+                        if (document.getElementById('total-size')) {
+                            document.getElementById('total-size').textContent = '0 GB';
+                        }
+                        if (document.getElementById('used-size')) {
+                            document.getElementById('used-size').textContent = '0 GB';
+                        }
+                        if (document.getElementById('free-size')) {
+                            document.getElementById('free-size').textContent = '0 GB';
+                        }
+                        if (document.getElementById('storage-percentage')) {
+                            document.getElementById('storage-percentage').textContent = '0%';
+                        }
+                    });
+            }
+            
+            // 创建存储桶
+            function createBucket() {
+                const bucketName = document.getElementById('bucket-name-input').value.trim();
+                const accessControl = document.querySelector('input[name="access-control"]:checked').value;
+                
+                if (!bucketName) {
+                    showToast('创建失败', '存储桶名称不能为空', 'error');
+                    return;
+                }
+                
+                // 检查名称是否符合规则
+                const bucketNameRegex = /^[a-z0-9-]+$/;
+                if (!bucketNameRegex.test(bucketName)) {
+                    showToast('创建失败', '存储桶名称只能包含小写字母、数字和短横线(-)', 'error');
+                    return;
+                }
+                
+                fetch(`${API_BASE_URL}/buckets`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: bucketName,
+                        access_control: accessControl
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showToast('创建失败', data.error, 'error');
+                    } else {
+                        showToast('创建成功', `存储桶 "${bucketName}" 已创建`, 'success');
+                        closeCreateBucketModal();
+                        fetchBuckets();
+                        updateDiskUsage();
+                    }
+                })
+                .catch(error => {
+                    console.error('创建存储桶失败:', error);
+                    showToast('创建失败', '无法连接到服务器', 'error');
+                });
+            }
+            
+            // 删除存储桶
+            function deleteBucket(bucketName) {
+                if (confirm(`确定要删除存储桶 "${bucketName}" 吗？此操作不可撤销。`)) {
+                    fetch(`${API_BASE_URL}/buckets/${bucketName}`, {
+                        method: 'DELETE'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            showToast('删除失败', data.error, 'error');
+                        } else {
+                            showToast('删除成功', `存储桶 "${bucketName}" 已删除`, 'success');
+                            
+                            // 如果删除的是当前选中的桶，重置视图
+                            if (currentBucket === bucketName) {
+                                currentBucket = null;
+                                initialViewEl.classList.remove('hidden');
+                                bucketActionsEl.classList.add('hidden');
+                                objectsViewEl.classList.add('hidden');
+                                breadcrumbBucketEl.textContent = '未选择存储桶';
+                            }
+                            
+                            fetchBuckets();
+                            updateDiskUsage();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('删除存储桶失败:', error);
+                        showToast('删除失败', '无法连接到服务器', 'error');
+                    });
+                }
+            }
+            
+            // 下载对象
+            function downloadObject(bucketName, objectName) {
+                const downloadUrl = `${API_BASE_URL}/buckets/${bucketName}/objects/${objectName}`;
+                
+                // 创建隐藏的a标签用于下载
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.setAttribute('download', objectName);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                showToast('下载开始', `正在下载 "${objectName}"`, 'success');
+            }
+            
+            // 复制对象URL
+            function copyObjectUrl(bucketName, objectName) {
+                // 使用S3兼容的路径格式，更简洁
+                const objectUrl = `${API_BASE_URL}/${bucketName}/${objectName}`;
+                
+                // 检查clipboard API是否可用
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(objectUrl).then(() => {
+                        showToast('复制成功', '对象链接已复制到剪贴板', 'success');
+                    }).catch(() => {
+                        // 降级方案
+                        copyToClipboardFallback(objectUrl);
+                    });
+                } else {
+                    // 直接使用降级方案
+                    copyToClipboardFallback(objectUrl);
+                }
+            }
+            
+            // 复制到剪贴板的降级方案
+            function copyToClipboardFallback(text) {
+                try {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    if (successful) {
+                        showToast('复制成功', '对象链接已复制到剪贴板', 'success');
+                    } else {
+                        showToast('复制失败', '请手动复制链接', 'error');
+                        console.log('链接内容:', text);
+                    }
+                } catch (err) {
+                    showToast('复制失败', '请手动复制链接', 'error');
+                    console.log('链接内容:', text);
+                }
+            }
+            
+            // 生成预签名URL
+            function generatePresignedUrl(bucketName, objectName) {
+                // 调用后端预签名API
+                fetch(`${API_BASE_URL}/buckets/${bucketName}/objects/${encodeURIComponent(objectName)}/presigned?expires=3600`, {
+                    method: 'GET'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showToast('生成失败', data.error, 'error');
+                    } else {
+                        const presignedUrl = data.presigned_url;
+                        
+                        // 复制预签名URL到剪贴板
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(presignedUrl).then(() => {
+                                showToast('预签名链接已复制', '带签名的对象链接已复制到剪贴板', 'success');
+                            }).catch(() => {
+                                // 降级方案
+                                copyToClipboardFallback(presignedUrl);
+                            });
+                        } else {
+                            // 直接使用降级方案
+                            copyToClipboardFallback(presignedUrl);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('生成预签名URL失败:', error);
+                    showToast('生成失败', '无法连接到服务器', 'error');
+                });
+            }
+            
+            // 删除对象
+            function deleteObject(bucketName, objectName) {
+                const isFolder = objectName.endsWith('/');
+                const typeText = isFolder ? '文件夹' : '文件';
+                const confirmText = isFolder ? 
+                    `确定要删除文件夹 "${objectName}" 吗？此操作将删除文件夹及其所有内容，不可撤销。` :
+                    `确定要删除文件 "${objectName}" 吗？此操作不可撤销。`;
+                
+                if (confirm(confirmText)) {
+                    fetch(`${API_BASE_URL}/buckets/${bucketName}/objects/${objectName}`, {
+                        method: 'DELETE'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            showToast('删除失败', data.error, 'error');
+                        } else {
+                            showToast('删除成功', `${typeText} "${objectName}" 已删除`, 'success');
+                            fetchObjects(bucketName, currentPath);
+                            updateDiskUsage();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('删除对象失败:', error);
+                        showToast('删除失败', '无法连接到服务器', 'error');
+                    });
+                }
+            }
+            
+            // 处理文件选择
+            function handleFileSelect(e) {
+                if (e.target.files.length > 0) {
+                    handleFiles(e.target.files);
+                }
+            }
+            
+            // 处理文件
+            function handleFiles(files) {
+                fileItemsContainerEl.innerHTML = '';
+                
+                // 如果是拖拽上传，需要将文件添加到fileInput
+                if (files !== fileInputEl.files) {
+                    const dt = new DataTransfer();
+                    // 保留原有文件
+                    for (let i = 0; i < fileInputEl.files.length; i++) {
+                        dt.items.add(fileInputEl.files[i]);
+                    }
+                    // 添加新文件
+                    for (let i = 0; i < files.length; i++) {
+                        dt.items.add(files[i]);
+                    }
+                    fileInputEl.files = dt.files;
+                }
+                
+                for (let i = 0; i < fileInputEl.files.length; i++) {
+                    const file = fileInputEl.files[i];
+                    const fileItemEl = document.createElement('div');
+                    fileItemEl.className = 'flex items-center justify-between p-2 border-b border-gray-100';
+                    fileItemEl.innerHTML = `
+                        <div class="flex items-center">
+                            <i class="fa fa-file-o text-gray-400 mr-2"></i>
+                            <div>
+                                <div class="text-sm font-medium text-gray-800">${file.name}</div>
+                                <div class="text-xs text-gray-500">${formatFileSize(file.size)}</div>
+                            </div>
+                        </div>
+                        <button class="remove-file-btn text-gray-400 hover:text-danger" data-index="${i}">
+                            <i class="fa fa-times"></i>
+                        </button>
+                    `;
+                    
+                    fileItemsContainerEl.appendChild(fileItemEl);
+                }
+                
+                uploadFilesListEl.classList.remove('hidden');
+                
+                // 添加删除文件事件监听器
+                document.querySelectorAll('.remove-file-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const index = parseInt(this.getAttribute('data-index'));
+                        const dt = new DataTransfer();
+                        
+                        for (let i = 0; i < fileInputEl.files.length; i++) {
+                            if (i !== index) {
+                                dt.items.add(fileInputEl.files[i]);
+                            }
+                        }
+                        
+                        fileInputEl.files = dt.files;
+                        handleFiles(fileInputEl.files);
+                        
+                        if (fileInputEl.files.length === 0) {
+                            uploadFilesListEl.classList.add('hidden');
+                        }
+                    });
+                });
+            }
+            
+            // 上传文件
+            function uploadFiles() {
+                const files = fileInputEl.files;
+                
+                if (files.length === 0) {
+                    showToast('上传失败', '请选择要上传的文件', 'error');
+                    return;
+                }
+                
+                // 显示进度条
+                const progressContainer = document.getElementById('upload-progress-container');
+                const progressBar = document.getElementById('upload-progress-bar');
+                const progressText = document.getElementById('upload-progress-text');
+                const uploadSpeed = document.getElementById('upload-speed');
+                const currentFile = document.getElementById('upload-current-file');
+                
+                progressContainer.classList.remove('hidden');
+                
+                let uploadedFiles = 0;
+                let totalFiles = files.length;
+                
+                // 逐个上传文件
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    // 更新当前文件信息
+                    currentFile.textContent = `正在上传: ${file.name}`;
+                    
+                    const startTime = Date.now();
+                    let lastLoaded = 0;
+                    
+                    // 构建上传路径
+                    let uploadUrl = `${API_BASE_URL}/buckets/${currentBucket}/objects`;
+                    if (currentPath) {
+                        uploadUrl += `?prefix=${encodeURIComponent(currentPath)}`;
+                    }
+                    
+                    fetch(uploadUrl, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.error) {
+                            showToast('上传失败', `文件 "${file.name}" 上传失败: ${data.error}`, 'error');
+                        } else {
+                            uploadedFiles++;
+                            const progress = (uploadedFiles / totalFiles) * 100;
+                            progressBar.style.width = `${progress}%`;
+                            progressText.textContent = `${Math.round(progress)}%`;
+                            
+                            if (uploadedFiles === totalFiles) {
+                                // 所有文件上传完成
+                                setTimeout(() => {
+                                    progressContainer.classList.add('hidden');
+                                    showToast('上传成功', `成功上传 ${totalFiles} 个文件`, 'success');
+                                    fetchObjects(currentBucket, currentPath);
+                                    updateDiskUsage();
+                                }, 1000);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('上传文件失败:', error);
+                        showToast('上传失败', `文件 "${file.name}" 上传失败: ${error.message}`, 'error');
+                        
+                        uploadedFiles++;
+                        const progress = (uploadedFiles / totalFiles) * 100;
+                        progressBar.style.width = `${progress}%`;
+                        progressText.textContent = `${Math.round(progress)}%`;
+                        
+                        if (uploadedFiles === totalFiles) {
+                            setTimeout(() => {
+                                progressContainer.classList.add('hidden');
+                            }, 1000);
+                        }
+                    });
+                }
+                
+                // 重置文件选择
+                fileInputEl.value = '';
+                uploadFilesListEl.classList.add('hidden');
+            }
+            
+            // 打开创建存储桶模态框
+            function openCreateBucketModal() {
+                document.getElementById('bucket-name-input').value = '';
+                document.querySelector('input[name="access-control"][value="private"]').checked = true;
+                
+                createBucketModalEl.classList.remove('hidden');
+                setTimeout(() => {
+                    modalContentEl.classList.remove('scale-95', 'opacity-0');
+                    modalContentEl.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            }
+            
+            // 关闭创建存储桶模态框
+            function closeCreateBucketModal() {
+                modalContentEl.classList.remove('scale-100', 'opacity-100');
+                modalContentEl.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => {
+                    createBucketModalEl.classList.add('hidden');
+                }, 300);
+            }
+            
+            // 打开创建文件夹模态框
+            function openCreateFolderModal() {
+                if (!currentBucket) {
+                    showToast('操作失败', '请先选择一个存储桶', 'error');
+                    return;
+                }
+                
+                document.getElementById('folder-name-input').value = '';
+                
+                createFolderModalEl.classList.remove('hidden');
+                setTimeout(() => {
+                    createFolderModalContentEl.classList.remove('scale-95', 'opacity-0');
+                    createFolderModalContentEl.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            }
+            
+            // 关闭创建文件夹模态框
+            function closeCreateFolderModal() {
+                createFolderModalContentEl.classList.remove('scale-100', 'opacity-100');
+                createFolderModalContentEl.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => {
+                    createFolderModalEl.classList.add('hidden');
+                }, 300);
+            }
+            
+            // 创建文件夹
+            function createFolder() {
+                const folderName = document.getElementById('folder-name-input').value.trim();
+                
+                if (!folderName) {
+                    showToast('创建失败', '文件夹名称不能为空', 'error');
+                    return;
+                }
+                
+                fetch(`${API_BASE_URL}/buckets/${currentBucket}/folders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: folderName,
+                        prefix: currentPath  // 传递当前路径
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showToast('创建失败', data.error, 'error');
+                    } else {
+                        showToast('创建成功', `文件夹 "${folderName}" 已创建`, 'success');
+                        closeCreateFolderModal();
+                        fetchObjects(currentBucket, currentPath);
+                    }
+                })
+                .catch(error => {
+                    console.error('创建文件夹失败:', error);
+                    showToast('创建失败', '无法连接到服务器', 'error');
+                });
+            }
+            
+            // 打开上传模态框
+            function openUploadModal() {
+                if (!currentBucket) {
+                    showToast('操作失败', '请先选择一个存储桶', 'error');
+                    return;
+                }
+                
+                // 显示当前路径
+                let uploadPath = currentBucket;
+                if (currentPath) {
+                    uploadPath += '/' + currentPath;
+                }
+                document.getElementById('upload-bucket-name').textContent = uploadPath;
+                
+                fileInputEl.value = '';
+                uploadFilesListEl.classList.add('hidden');
+                
+                uploadObjectModalEl.classList.remove('hidden');
+                setTimeout(() => {
+                    uploadModalContentEl.classList.remove('scale-95', 'opacity-0');
+                    uploadModalContentEl.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            }
+            
+            // 关闭上传模态框
+            function closeUploadModal() {
+                uploadModalContentEl.classList.remove('scale-100', 'opacity-100');
+                uploadModalContentEl.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => {
+                    uploadObjectModalEl.classList.add('hidden');
+                }, 300);
+            }
+            
+            // 显示提示框
+            function showToast(title, message, type = 'success') {
+                toastTitleEl.textContent = title;
+                toastMessageEl.textContent = message;
+                
+                // 设置图标和颜色
+                if (type === 'success') {
+                    toastIconEl.className = 'fa fa-check text-green-500';
+                    toastIconContainerEl.className = 'mr-3 p-2 rounded-full bg-green-100';
+                } else if (type === 'error') {
+                    toastIconEl.className = 'fa fa-times text-red-500';
+                    toastIconContainerEl.className = 'mr-3 p-2 rounded-full bg-red-100';
+                } else if (type === 'info') {
+                    toastIconEl.className = 'fa fa-info text-blue-500';
+                    toastIconContainerEl.className = 'mr-3 p-2 rounded-full bg-blue-100';
+                } else if (type === 'warning') {
+                    toastIconEl.className = 'fa fa-exclamation text-yellow-500';
+                    toastIconContainerEl.className = 'mr-3 p-2 rounded-full bg-yellow-100';
+                }
+                
+                // 显示提示框
+                toastEl.classList.remove('translate-y-16', 'opacity-0');
+                toastEl.classList.add('translate-y-0', 'opacity-100');
+                
+                // 3秒后自动隐藏
+                setTimeout(hideToast, 3000);
+            }
+            
+            // 隐藏提示框
+            function hideToast() {
+                toastEl.classList.remove('translate-y-0', 'opacity-100');
+                toastEl.classList.add('translate-y-16', 'opacity-0');
+            }
+            
+            // 对象列表加载状态
+            function objectsLoading(isLoading) {
+                if (isLoading) {
+                    objectListEl.innerHTML = `
+                        <tr class="text-center">
+                            <td colspan="4" class="px-6 py-12 text-gray-500">
+                                <div class="flex flex-col items-center">
+                                    <i class="fa fa-circle-o-notch fa-spin text-4xl mb-3 text-gray-300"></i>
+                                    <p>正在加载...</p>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+            
+            // 格式化文件大小
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+            
+            // 格式化日期
+            function formatDate(dateString) {
+                const date = new Date(dateString);
+                return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+            
+            // 获取显示名称（在文件夹内时只显示文件名）
+            function getDisplayName(objectName) {
+                if (currentPath === '') {
+                    // 在根目录，显示完整名称
+                    return objectName;
+                } else {
+                    // 在文件夹内，需要去掉当前路径前缀
+                    // 确保路径匹配时包含斜杠
+                    const pathToMatch = currentPath.endsWith('/') ? currentPath : currentPath + '/';
+                    
+                    if (objectName.startsWith(pathToMatch)) {
+                        const relativePath = objectName.substring(pathToMatch.length);
+                        return relativePath;
+                    } else {
+                        // 如果路径不匹配，返回原始名称
+                        return objectName;
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+    
