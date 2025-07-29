@@ -43,10 +43,27 @@
 - ✅ 文件夹管理
 - ✅ 无文件大小限制上传
 
+
+![](https://image.101723.xyz/202507/29134043118.png)
+![](https://image.101723.xyz/202507/29134114577.png)
+![](https://image.101723.xyz/202507/29134134518.png)
+![](https://image.101723.xyz/202507/29134209295.png)
+![](https://image.101723.xyz/202507/29134228460.png)
+![](https://image.101723.xyz/202507/29134255560.png)
+![](https://image.101723.xyz/202507/29134326148.png)
+
 ## 快速开始
 
 ### docker 快速启动
+
+```bash
+
+docker build -t pyio .
+
 docker run --rm -it -p 15000:15000 -v $(pwd)/data:/data -e STORAGE_PATH=/data -e ACCESS_KEY=admin -e SECRET_KEY=secret123 --name pyio pyio:latest
+```
+
+## 使用方法
 
 ### 1. 安装依赖
 
